@@ -1,6 +1,49 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { 
+  Links, 
+  Meta, 
+  Outlet, 
+  Scripts, 
+  ScrollRestoration, 
+  useLoaderData,
+  Link // CRITICAL FIX: Imported Link for the AppProvider's linkComponent prop
+} from "react-router"; 
+import { AppProvider } from "@shopify/polaris"; 
+import enTranslations from "@shopify/polaris/locales/en.json"; 
+import { useMemo } from "react"; 
 
-export default function App() {
+// --------------------------------------------------------------------------
+// LOADER (Runs on the server)
+// Safely retrieves the host and the client-side API Key
+// --------------------------------------------------------------------------
+export const loader = ({ request }) => {
+  const url = new URL(request.url);
+  const host = url.searchParams.get("host"); 
+  
+  return { 
+      host, 
+      polarisTranslations: enTranslations,
+      // CRITICAL FIX: Pass the API Key explicitly from the secure Node environment
+      shopifyApiKey: process.env.SHOPIFY_API_KEY
+  };
+};
+
+// --------------------------------------------------------------------------
+// ROOT COMPONENT (Renders the initial HTML structure and providers)
+// --------------------------------------------------------------------------
+export default function Root() {
+  // Destructure all necessary data passed from the server-side loader
+  const { host, polarisTranslations, shopifyApiKey } = useLoaderData(); 
+
+  // Configure App Bridge on the client using the exposed key
+  const appBridgeConfig = useMemo(() => {
+    return {
+      // CRITICAL FIX: Use the exposed shopifyApiKey, avoiding the ReferenceError for process.env
+      apiKey: shopifyApiKey, 
+      host: host,
+      forceRedirect: false,
+    };
+  }, [host, shopifyApiKey]);
+
   return (
     <html lang="en">
       <head>
@@ -15,7 +58,12 @@ export default function App() {
         <Links />
       </head>
       <body>
-        <Outlet />
+        
+        {/* CRITICAL FIX: AppProvider must wrap the Outlet to provide context */}
+        <AppProvider i18n={polarisTranslations} linkComponent={Link}> 
+            <Outlet />
+        </AppProvider>
+        
         <ScrollRestoration />
         <Scripts />
       </body>

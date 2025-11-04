@@ -1,34 +1,34 @@
-import { Outlet, useLoaderData, useRouteError } from "react-router";
-import { boundary } from "@shopify/shopify-app-react-router/server";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { authenticate } from "../shopify.server";
+import { useMemo } from "react"; // Still needed if you use it for other logic
+import { Link, Outlet, useLoaderData } from "react-router-dom"; 
+// REMOVE AppProvider import:
+// import { AppProvider } from "@shopify/polaris"; 
+import enTranslations from "@shopify/polaris/locales/en.json"; // Can be removed
 
-export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+// NOTE: We keep the links export but should use Option B for CSS (empty array)
+export const links = () => []; 
 
-  // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
-};
+// REMOVE LOADER: The host/translations loader is now in root.jsx
+// export const loader = ({ request }) => { ... }; 
 
 export default function App() {
-  const { apiKey } = useLoaderData();
+  // We no longer need to destruct host, polarisTranslations from useLoaderData()
+  // const { host, polarisTranslations } = useLoaderData(); 
+
+  // We can remove the useMemo/appBridgeConfig if it's not used here anymore
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
-      <s-app-nav>
-        <s-link href="/app">Home</s-link>
-        <s-link href="/app/additional">Additional page</s-link>
-      </s-app-nav>
-      <Outlet />
-    </AppProvider>
+    // REMOVE AppProvider Wrapper
+    <>
+      
+      {/* 1. Shopify Admin Navigation */}
+      <ui-nav-menu>
+          <Link to="/app" rel="home">Dashboard</Link>
+          <Link to="/policy/generator">Policy Generator</Link>
+          <Link to="/content/writer">Content Writer</Link>
+      </ui-nav-menu>
+      
+      {/* 2. Page Content Slot */}
+      <Outlet /> 
+    </>
   );
 }
-
-// Shopify needs React Router to catch some thrown responses, so that their headers are included in the response.
-export function ErrorBoundary() {
-  return boundary.error(useRouteError());
-}
-
-export const headers = (headersArgs) => {
-  return boundary.headers(headersArgs);
-};
