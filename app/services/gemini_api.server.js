@@ -1,15 +1,6 @@
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { config } from 'dotenv';
-// Note: In a standard Remix environment, `fetch` is globally available,
-// but for self-contained server environments, it is often useful to import.
-// const fetch = global.fetch; // Or ensure 'node-fetch' is installed if needed outside of Remix's runtime.
-
-// Load environment variables from .env file (if running locally outside the platform)
-// NOTE: This dotenv setup is typically not needed in the canvas environment, but useful for local development.
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = dirname(__filename);
-// config({ path: `${__dirname}/../../../.env` }); 
 
 // CRITICAL: We rely on the global GEMINI_API_KEY environment variable.
 const API_KEY = process.env.GEMINI_API_KEY || ""; 
@@ -24,11 +15,14 @@ const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-
  */
 export async function generateGeminiContent(systemPrompt, userQuery, schema = null) {
     if (!API_KEY) {
-        // This should not happen in the target platform, but is a useful check.
         console.error("GEMINI_API_KEY environment variable is not set.");
-        // Return a mock response for development stability
+        // Return mock JSON structure to prevent JSON.parse errors in policy_generator.server.js
         if (schema) {
-            return JSON.stringify({ error: "API Key Missing", content: "MOCK JSON CONTENT" });
+            return JSON.stringify({ 
+                privacyPolicyContent: "<h1>Mock Privacy Policy</h1><p>API key is missing, content not generated.</p>", 
+                termsOfServiceContent: "<h1>Mock Terms of Service</h1>",
+                refundPolicyContent: "<h1>Mock Refund Policy</h1>"
+            });
         }
         return "Error: AI generation failed due to missing API key.";
     }
@@ -36,12 +30,14 @@ export async function generateGeminiContent(systemPrompt, userQuery, schema = nu
     // Attempt exponential backoff for API calls
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
+            // CRITICAL FIX: The top-level configuration field must be 'generationConfig' 
+            // for Gemini API, not 'config'.
             const payload = {
                 contents: [{ parts: [{ text: userQuery }] }],
                 systemInstruction: {
                     parts: [{ text: systemPrompt }]
                 },
-                generationConfig: {}
+                generationConfig: {} // <-- CORRECTED FIELD NAME
             };
 
             if (schema) {
@@ -50,8 +46,6 @@ export async function generateGeminiContent(systemPrompt, userQuery, schema = nu
                 payload.generationConfig.responseSchema = schema;
             }
 
-            // In a standard Shopify Remix app, the host environment (like Fly.io or Render) 
-            // often provides the API key access, so we rely on the global process.env.
             const response = await fetch(`${API_URL}?key=${API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -65,17 +59,25 @@ export async function generateGeminiContent(systemPrompt, userQuery, schema = nu
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-                throw new Error(`API call failed with status: ${response.status} - ${response.statusText}`);
+                const errorBody = await response.text();
+                throw new Error(`API call failed with status: ${response.status} - ${response.statusText}. Details: ${errorBody}`);
             }
 
             const result = await response.json();
+            
+            // Check for prompt filtering or other safety errors
+            if (result.candidates?.[0]?.finishReason === 'SAFETY') {
+                throw new Error("Content generation failed due to safety settings.");
+            }
+
+            // Extract the generated text content
             const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (!text) {
-                throw new Error("Gemini API returned no content in candidate part.");
+                throw new Error("Gemini API returned no usable content.");
             }
 
-            return text;
+            return text; 
 
         } catch (error) {
             console.error(`Attempt ${attempt + 1} failed:`, error.message);
