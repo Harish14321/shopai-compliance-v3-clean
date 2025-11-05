@@ -1,21 +1,18 @@
-import { useState } from "react";
+import { useState } from "react"; 
 import { Form, useActionData, useNavigation } from "react-router-dom";
 import {
-  Page, // <-- CRITICAL FIX: Re-added Page to imports
+  Page, 
   Layout,
   Card,
   Text,
   Button,
   FormLayout,
-  Select,
+  Select, 
   TextContainer,
   Banner,
   List,
 } from "@shopify/polaris";
-// Links to the server action for content generation
 import { generateAndApplyContent } from "../services/content_writer.server"; 
-// NOTE: authenticate is not needed here as it's used inside the action function
-// import { authenticate } from "../shopify.server"; 
 
 // --------------------------------------------------------------------------
 // SERVER ACTION: Handles form submission for content generation
@@ -25,42 +22,56 @@ export const action = async ({ request }) => {
   return result; // Remix sends this result back to useActionData()
 };
 
+// --- Initial Constants ---
+const DEFAULT_TONE = "Professional";
+const DEFAULT_LANGUAGE = "English";
+// -------------------------
+
 // --------------------------------------------------------------------------
 // CLIENT COMPONENT: Content Writer Form
 // --------------------------------------------------------------------------
 export default function ContentWriterPage() {
   const actionData = useActionData();
   const navigation = useNavigation();
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [tone, setTone] = useState("Professional");
   
+  // FIX: RESTORED dynamic state—selectedProduct starts as null
+  const [selectedProduct, setSelectedProduct] = useState(null); 
+  const isProductSelected = !!selectedProduct; 
   const isLoading = navigation.state === 'submitting';
+
+  // FIX: Controlled state introduced to fix the UI Select lockup (required for Polaris)
+  const [selectedTone, setSelectedTone] = useState(DEFAULT_TONE);
+  const [targetLanguage, setTargetLanguage] = useState(DEFAULT_LANGUAGE);
   
-  // Options based on your project plan
   const toneOptions = [
     { label: "Professional", value: "Professional" },
     { label: "Casual & Witty", value: "Casual" },
     { label: "Luxury & Exclusive", value: "Luxury" },
     { label: "Minimalist & Direct", value: "Minimalist" },
   ];
-
-  // Placeholder function for product selection. 
-  // In a real app, this would open the Shopify ResourcePicker.
-  const handleProductSelect = () => {
-    // Simulate selecting a product for demonstration purposes
-    setSelectedProduct({
-        id: "gid://shopify/Product/1234567890123", // Mock Product GID
-        title: "The Ultimate Ergonomic Office Chair",
-        description: "A comfortable and adjustable chair designed for long hours of productivity. Features lumbar support and breathable mesh.",
-        tags: "office, ergonomic, chair, comfort, wfh",
-    });
-  };
   
-  const isProductSelected = !!selectedProduct;
+  const languageOptions = [
+    { label: "English", value: "English" },
+    { label: "Spanish (Español)", value: "Spanish" },
+    { label: "French (Français)", value: "French" },
+    { label: "German (Deutsch)", value: "German" },
+  ];
+
+  // FIX: Restores the mock selection function (to be replaced by Shopify Resource Picker later)
+  const handleProductSelect = () => {
+    // NOTE: Replace this mock implementation with actual Shopify Resource Picker code later
+    // This mock is here to simulate user interaction and allow testing in dev environment.
+    const NEW_MOCK_PRODUCT = {
+        id: "gid://shopify/Product/1234567890123", 
+        title: "Current Product Title for Testing",
+        description: "The existing product description for AI rewriting.",
+        tags: "example, tag, test",
+    };
+    setSelectedProduct(NEW_MOCK_PRODUCT);
+  };
 
 
   return (
-    // CRITICAL FIX: Wrapping the Layout in <Page> restores the Polaris context
     <Page> 
       <Layout>
         <Layout.Section>
@@ -96,12 +107,11 @@ export default function ContentWriterPage() {
         
         <Layout.Section>
           <Card>
-            {/* Form uses method="post" to trigger the exported action function */}
             <Form method="post">
               <FormLayout>
                 <Text variant="headingMd" as="h3">Product Selection</Text>
                 
-                {/* Button to simulate opening the ResourcePicker */}
+                {/* Button to simulate opening the ResourcePicker / Display current selection */}
                 {!isProductSelected && (
                     <Button onClick={handleProductSelect} primary>
                         Select Product
@@ -120,7 +130,7 @@ export default function ContentWriterPage() {
                     </TextContainer>
                 )}
                 
-                {/* Hidden fields to pass necessary product data to the server action */}
+                {/* Hidden fields pass the necessary product data to the server action */}
                 <input type="hidden" name="productId" value={selectedProduct?.id || ''} />
                 <input type="hidden" name="productName" value={selectedProduct?.title || ''} />
                 <input type="hidden" name="productDescription" value={selectedProduct?.description || ''} />
@@ -133,16 +143,29 @@ export default function ContentWriterPage() {
                   label="Content Tone"
                   name="productTone"
                   options={toneOptions}
-                  onChange={setTone}
-                  value={tone}
+                  value={selectedTone} // Value is managed by state
+                  onChange={setSelectedTone} // State handler
                   helpText="Select the voice style for the new description and meta tags."
                   requiredIndicator
                 />
 
+                {/* --- Multilingual Field --- */}
+                <Select
+                  label="Target Language"
+                  name="targetLanguage" 
+                  options={languageOptions}
+                  value={targetLanguage} // Value is managed by state
+                  onChange={setTargetLanguage} // State handler
+                  helpText="Select the language for the AI to translate and optimize the content."
+                  requiredIndicator
+                />
+                {/* ----------------------------- */}
+
+
                 <Button 
                   submit 
                   primary 
-                  disabled={isLoading || !isProductSelected} // Disable if loading or no product selected
+                  disabled={isLoading || !isProductSelected} 
                   loading={isLoading}
                 >
                   {isLoading ? 'Generating Content...' : 'Generate & Apply Content'}

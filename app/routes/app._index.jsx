@@ -10,8 +10,6 @@ import {
   Grid,
 } from "@shopify/polaris";
 import { runStoreAudit } from "../services/auditor.server";
-// REMOVED: import { useAppBridge } from "@shopify/app-bridge-react"; 
-// REMOVED: import { Redirect } from "@shopify/app-bridge/actions"; 
 
 
 // Component to display an individual score
@@ -22,7 +20,8 @@ function ScoreCard({ title, score, status, description }) {
         {title}
       </Text>
       <div style={{ marginTop: '8px', marginBottom: '8px' }}>
-        <Text variant="heading3xl" as="p">
+        {/* FIX: Changed deprecated variant "heading3xl" to "heading2xl" */}
+        <Text variant="heading2xl" as="p"> 
           <Badge status={status}>{score}%</Badge>
         </Text>
       </div>
@@ -33,13 +32,15 @@ function ScoreCard({ title, score, status, description }) {
   );
 }
 
-// The loader function returns the raw data object
+// The loader function runs the Auditor service
 export const loader = async ({ request }) => {
+  // CRITICAL: This executes the store audit logic before rendering the dashboard
   const auditResult = await runStoreAudit(request);
   return auditResult;
 };
 
 export default function Index() {
+  // Destructure audit data from the server loader
   const { auditData, errors: loaderErrors } = useLoaderData() || {};
   
   const getScoreStatus = (score) => {
@@ -48,22 +49,17 @@ export default function Index() {
     return "critical";
   };
   
-  // Placeholder for audit data
+  // Use actual auditData if present, otherwise use placeholder
   const initialAuditData = {
-    totalScore: 25, 
-    complianceScore: 25, 
+    totalScore: 0, 
+    complianceScore: 0, 
     seoScore: 0, 
-    recommendations: ["Missing critical policy: Refund Policy.", "Missing critical policy: Shipping Policy."],
+    recommendations: ["Waiting for audit results..."],
     errors: [],
   };
-
   const data = auditData || initialAuditData;
   const errors = loaderErrors || data.errors;
   const totalStatus = getScoreStatus(data.totalScore);
-
-
-  // REMOVED: App Bridge Navigation handlers (useAppBridge, redirect, navigateTo...)
-  // We rely entirely on the Remix <Link> component now.
 
 
   return (
@@ -80,7 +76,7 @@ export default function Index() {
           </Text>
         </Layout.Section>
 
-        {/* --- 1. Consolidated Scorecard Grid --- */}
+        {/* --- 1. Consolidated Scorecard Grid (Displays Audit Scores) --- */}
         <Layout.Section>
           <Card>
              <Grid>
@@ -112,7 +108,7 @@ export default function Index() {
           </Card>
         </Layout.Section>
 
-        {/* --- 2. Actionable Recommendations --- */}
+        {/* --- 2. Actionable Recommendations (Uses Audit Results) --- */}
         <Layout.Section>
             {(data.recommendations && data.recommendations.length > 0) && (
                 <Card title="Actionable Recommendations" sectioned>

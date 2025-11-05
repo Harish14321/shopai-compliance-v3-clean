@@ -2,8 +2,6 @@ import { authenticate } from "../shopify.server";
 
 // --------------------------------------------------------------------------
 // GRAPHQL QUERY 1: Checks for the presence of key Policy Pages
-// Uses the `policy` fields on the `shop` object which automatically checks
-// the standard policy handles (privacy-policy, refund-policy, etc.)
 // --------------------------------------------------------------------------
 const POLICY_CHECK_QUERY = `#graphql
   query getPolicyPages {
@@ -18,7 +16,7 @@ const POLICY_CHECK_QUERY = `#graphql
 
 // --------------------------------------------------------------------------
 // GRAPHQL QUERY 2: Checks products for missing SEO meta descriptions
-// It checks the first 250 products.
+// Checks the first 250 products for SEO score calculation.
 // --------------------------------------------------------------------------
 const PRODUCT_SEO_CHECK_QUERY = `#graphql
   query productSeoCheck($first: Int!) {
@@ -39,6 +37,22 @@ const PRODUCT_SEO_CHECK_QUERY = `#graphql
 `;
 
 /**
+ * GraphQL QUERY 3: Fetches all page titles for duplicate policy title detection.
+ */
+const ALL_PAGES_TITLES_QUERY = `#graphql
+  query checkDuplicatePages($first: Int!) {
+    pages(first: $first) {
+      edges {
+        node { 
+          title 
+        }
+      }
+    }
+  }
+`;
+
+
+/**
  * Calculates the Compliance and SEO Health Score by querying the Shopify Admin API.
  * The total score is the sum of Compliance Score (Max 50) and SEO Score (Max 50).
  * @param {Request} request - The Remix request object.
@@ -56,11 +70,9 @@ export async function runStoreAudit(request) {
   };
 
   try {
-    // CRITICAL FIX: Destructure the admin client correctly from the authenticate function.
     const { admin } = await authenticate(request);
 
     // --- 1. Compliance Audit (Max 50 points) ---
-    // Policies use the built-in Shopify policy handles for reliable checking.
     const policyResponse = await admin.graphql(POLICY_CHECK_QUERY);
     const shopPolicies = policyResponse.data?.shop || {};
     
@@ -83,24 +95,46 @@ export async function runStoreAudit(request) {
       }
     });
 
-    // Score is weighted out of 50. 4 policies * 12.5 points each.
+    // Score calculation
     results.complianceScore = Math.floor((compliantCount / requiredPolicies.length) * 50);
 
+
+    // --- 1B. Duplicate Policy Title Check (CRITICAL FIX APPLIED HERE) ---
+    const pagesResponse = await admin.graphql(ALL_PAGES_TITLES_QUERY, {
+        variables: { first: 250 } // Check first 250 pages
+    });
+    
+    // CRITICAL FIX: Use optional chaining to safely access nested properties and prevent crash
+    const pageData = pagesResponse.data?.pages;
+    
+    if (pageData?.edges) {
+        // This code only runs if 'pages.edges' exists, resolving the crash.
+        const pageTitles = pageData.edges.map(e => e.node.title);
+        const policyTitles = ["Privacy Policy", "Refund Policy", "Shipping Policy", "Terms of Service"];
+
+        policyTitles.forEach(title => {
+            const count = pageTitles.filter(t => t.includes(title)).length;
+            if (count > 1) {
+                results.recommendations.push(`Warning: Found ${count} pages containing the title "${title}". Delete duplicates to improve SEO.`);
+            }
+        });
+    }
+    // ----------------------------------------------------
+
+
     // --- 2. SEO Audit (Max 50 points) ---
-    // Note: We only check the first 250 products for speed.
     const productResponse = await admin.graphql(PRODUCT_SEO_CHECK_QUERY, {
       variables: { first: 250 }
     });
 
     const productData = productResponse.data?.products;
-    const totalProducts = productData.totalCount;
     let seoOptimizedCount = 0;
     let productsChecked = 0;
 
     if (productData && productData.nodes) {
         productData.nodes.forEach(product => {
             productsChecked++;
-            // Check if the SEO description meta field is set and has content (length > 10 is a good proxy)
+            // Check if the SEO description meta field is set and has content
             const isOptimized = product.hasMetaDescription?.description?.length > 10;  
             if (isOptimized) {
                 seoOptimizedCount++;
@@ -110,8 +144,8 @@ export async function runStoreAudit(request) {
 
     const productsNeedingFix = productsChecked - seoOptimizedCount;
     
-    // Calculate SEO score based on percentage of products optimized (weighted against 50 max points)
-    results.seoStatus = { totalProducts: totalProducts, optimized: seoOptimizedCount, checked: productsChecked };
+    // Calculate SEO score based on percentage of products optimized
+    results.seoStatus = { totalProducts: productData?.totalCount || 0, optimized: seoOptimizedCount, checked: productsChecked };
 
     if (productsChecked > 0) {
         results.seoScore = Math.floor((seoOptimizedCount / productsChecked) * 50);
@@ -125,6 +159,13 @@ export async function runStoreAudit(request) {
     // --- 3. Final Score and Status ---
     results.totalScore = results.complianceScore + results.seoScore;
     
+    // CRITICAL DEBUG: Log the final result before returning to verify logic
+    console.log("--- STORE AUDIT COMPLETE ---");
+    console.log(`Total Score: ${results.totalScore}`);
+    console.log(`Recommendations: ${JSON.stringify(results.recommendations)}`);
+    console.log("----------------------------");
+
+    
     return {
       success: true,
       auditData: results,
@@ -136,6 +177,7 @@ export async function runStoreAudit(request) {
     return {
       success: false,
       errors: [`Failed to run audit: ${error.message}. Ensure permissions are granted.`],
+      // Return partial data so the UI can still show the scorecards
       auditData: results
     };
   }

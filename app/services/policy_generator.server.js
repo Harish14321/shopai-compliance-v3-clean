@@ -1,7 +1,7 @@
 import { authenticate } from "../shopify.server";
-import { generateGeminiContent } from "./gemini_api.server.js"; // <-- PATH IS CORRECT: ./ because gemini_api.server.js is in the same folder
+import { generateGeminiContent } from "./gemini_api.server.js"; 
 
-// GraphQL mutation and POLICY_SCHEMA definitions remain the same...
+// GraphQL mutation to create a new Shopify Page
 const PAGE_CREATE_MUTATION = `
   mutation pageCreate($input: PageInput!) {
     pageCreate(input: $input) {
@@ -18,6 +18,7 @@ const PAGE_CREATE_MUTATION = `
   }
 `;
 
+// Define the structured JSON schema for the AI's response
 const POLICY_SCHEMA = {
     type: "OBJECT",
     properties: {
@@ -30,26 +31,23 @@ const POLICY_SCHEMA = {
 
 /**
  * Generates legal policies using the Gemini API and creates Shopify pages.
+ * @param {Request} request - The Remix request object containing form data.
+ * @returns {Promise<object>} The result object with success status, policy URLs, or errors.
  */
 export async function generateAndApplyPolicies(request) {
     const data = await request.formData();
     
-    // --- CRITICAL DEBUG FIX: HARDCODED MOCK DATA ---
-    const businessName = "ShopAI Test Company"; 
-    const contactEmail = "support@shopaitest.com"; 
-    const jurisdiction = "EU_GDPR"; 
-    const refundDays = "45"; 
+    // --- RESTORED ORIGINAL DATA EXTRACTION ---
+    // Variables are retrieved dynamically from the submitted form data
+    const businessName = data.get("businessName"); 
+    const contactEmail = data.get("contactEmail"); 
+    const jurisdiction = data.get("jurisdiction"); 
+    const refundDays = data.get("refundDays"); 
     
-    // CRITICAL DEBUG: Log incoming data to the server terminal
-    console.log("--- INCOMING FORM DATA (HARDCODED) ---");
-    console.log(`Business Name: ${businessName}`);
-    console.log(`Contact Email: ${contactEmail}`);
-    console.log(`Jurisdiction: ${jurisdiction}`);
-    console.log(`Refund Days: ${refundDays}`);
-    console.log("--------------------------------------");
-
-    // 1. Input Validation is BYPASSED
-    // if (!businessName || !contactEmail || !jurisdiction || !refundDays) { ... }
+    // 1. Input Validation (RESTORED)
+    if (!businessName || !contactEmail || !jurisdiction || !refundDays) {
+        return { success: false, errors: ["Missing required business details."] };
+    }
 
     const errors = [];
     let policyData;
@@ -71,7 +69,7 @@ export async function generateAndApplyPolicies(request) {
         errors.push(`AI Policy Generation Failed: ${e.message}`);
         return { success: false, errors };
     }
-    
+
     const policyPages = [
         { title: "Privacy Policy", content: policyData.privacyPolicyContent, handle: 'privacy-policy' },
         { title: "Terms of Service", content: policyData.termsOfServiceContent, handle: 'terms-of-service' },
